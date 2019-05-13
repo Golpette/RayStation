@@ -11,9 +11,7 @@ To run type:
   
 - Will not allow more than 1 dose escalation, nor a reduction in the
   prescribed dose, but allows any number of replans
-  
-  TODO: prompt for localisation
-  TODO: Add couch
+
 """
 
 import sys; sys.dont_write_bytecode=True
@@ -24,15 +22,20 @@ import connect as rsl
 import os
 
 from rmh.plan import stopOption
-
 from rmh.dialogs import (
     chooseFromList, enterNumber, RmhMessageBox
 )
 
+#For DoseColorTable?
+import platform
+import clr
+clr.AddReference("System.Drawing")
+
+
 # ---------------------------------- #
 
 
-ADAPT_PLAN_SUFFIX = "replan"
+#ADAPT_PLAN_SUFFIX = "Adaption"
 MACHINE_FOR_OPT = "StrctAgility"
 FINAL_MACHINE = "Agility"
 
@@ -54,13 +57,19 @@ OBJECTIVES_TO_SCALE_WITH_PRESCRIPTION = [
     "ring_60Gy_a",
     "ring_60Gy_b",
     "60Gy_nearParotids",
+    "PTV_70Gy",
+    "PTV_70Gy_ed",
+    "PTV_70Gy_rind",
+    #
+    #Should probably relax these too?
+    "oralcavity_spare",
+    "ml_spare",
+    "brain_spare",
+    "post_spare",
     #
     "PTV_65Gy",
     "PTV_65Gy_ed",
     "PTV_65Gy_rind",
-    "PTV_70Gy",
-    "PTV_70Gy_ed",
-    "PTV_70Gy_rind",
     "Parotid_R",
     "Parotid_L",
     "Parotids_Superficial",
@@ -78,13 +87,13 @@ GOALS_TO_SCALE_WITH_PRESCRIPTION = [
     "ring_60Gy_a",
     "ring_60Gy_b",
     "60Gy_nearParotids", 
+    "PTV_70Gy",
+    "PTV_70Gy_ed",
+    "PTV_70Gy_rind",
     #
     "PTV_65Gy",
     "PTV_65Gy_ed",
     "PTV_65Gy_rind",
-    "PTV_70Gy",
-    "PTV_70Gy_ed",
-    "PTV_70Gy_rind",
     "ring_65Gy_a",
     "ring_65Gy_b",
     "par_R-PTVs",
@@ -94,6 +103,123 @@ GOALS_TO_SCALE_WITH_PRESCRIPTION = [
 
 
 
+
+
+
+
+def set_color_table(case, presc_beamset, tot_nr_fx, remaining_fractions):
+    """ Correctly set the color table
+
+    Dose escalation only on high dose target, hence template wrong
+    HARD CODED FOR 2-DOSE LEVEL PLANS; 65+54Gy. WILL NOT BE CORRECT OTHERWISE.
+    """
+    
+    #Dose levels for H&N 65+54Gy template
+    #3 associated with 54Gy (88.89, 83.08, 78.92) need changed when escalating dose
+    levels = [0, 23.077, 46.154, 73.846, 76.923, 78.923, 83.077, 88.892, 95, 100, 103, 105, 107]
+    # BUT, issue now is that scaling the levels for 54Gy (78.923,83.077,88.92) might produce lower 
+    # values relative to the beamset prescription levels, so the colours will not be in order!
+    # We must express all levels 95 and up wrt to beamset prescription high dose,
+    # and all levels 76.923 down wrt to 5400cGy?? Or just arbitrary values:
+    #levels = [0, 23.077, 46.154, 73.846, 76.923, 78.923, 83.077, 88.892, 95, 100, 103, 105, 107]
+    levels = [0,  20   ,  40    , 50    , 60    , 78.923, 83.077, 88.892, 95, 100, 103, 105, 107]
+
+    
+    case.CaseSettings.DoseColorMap.ColorMapReferenceType = "ReferenceValue"
+    case.CaseSettings.DoseColorMap.ReferenceValue = presc_beamset
+    
+    ct = case.CaseSettings.DoseColorMap.ColorTable
+    #Get keys and colors for ColorTable (SortedDictionary)
+    keys = []
+    colors = []
+    for c in ct:
+        keys.append( c.Key )
+        colors.append( c.Value )
+
+    #Always sorted by key (dose level)?   
+    #keys, colors = (list(x) for x in zip(*sorted(zip(keys, colors))))
+    
+    #Clear ColorTable
+    for key in keys:
+        if platform.python_implementation() == "IronPython":
+            ct.Remove( key )
+        else:
+            del ct[key]
+
+    #Repopulate        
+    #case.CaseSettings.DoseColorMap.ReferenceValue = presc_beamset
+    if len(levels)==len(colors):
+        for lvl,color in zip(levels,colors):
+            ct[lvl] = color
+    else:
+        print "Error: ColorTable levels and colors do not match!"
+        
+    #levels_to_change = [5130,5400,5778]  ## if Table usually to 6500
+    levels_to_change = [5138,5408,5787]  ## if Table usually to 6510
+
+    lvls54 = []
+    for lvl in levels_to_change:
+        new_value = 1.0*lvl /tot_nr_fx * remaining_fractions
+        new_lvl = 100.0*new_value / presc_beamset        
+        lvls54.append( round(new_lvl,2) )
+        
+    colors54 = [ct[78.923], ct[83.077], ct[88.892]]
+    ct.Remove(78.923); ct.Remove(83.077); ct.Remove(88.892) 
+    
+    #print lvls54
+    #print colors54
+    
+    for lvl,col in zip(lvls54, colors54):
+        ct[lvl] = col
+            
+    case.CaseSettings.DoseColorMap.ColorTable = ct    
+
+    #print "Set the 3 levels on 54Gy target to:"
+    #print "    ", lvls_54Gy
+
+
+
+    
+    
+    
+def get_adaption_name(case, plan):
+    """ Form plan name from adaption number and a numbered subscript
+    """
+    name = "Adapt"
+    adaption = 1
+    
+    #Count previous adaptations
+    if( plan.AdaptionTo is None ):
+        adaption = 1       
+    else:  
+        searching_plans = True
+        while( searching_plans ):      
+            if( plan.AdaptionTo is not None ): 
+                adaption += 1                
+                prev_plan = plan.AdaptionTo.Name
+                plan = case.TreatmentPlans[ prev_plan ]                
+            else:
+                searching_plans = False
+     
+    name_attempt = name+"_"+str(adaption)
+    
+    # Does this plan name already exist? Add subscript if yes.
+    plan_names = [plan.Name for plan in case.TreatmentPlans]
+    
+    if name_attempt not in plan_names:
+        name = name_attempt
+    else:
+        searching = True
+        subscript = 1
+        while( searching ):
+            subscript += 1
+            if name_attempt+"_"+str(subscript) not in plan_names:
+                name = name_attempt+"_"+str(subscript)
+                searching = False
+    
+    return name
+    
+    
 
 
 def get_background_dose(case, plan, roi_presc):
@@ -172,7 +298,7 @@ def check_new_prescription_valid( case, plan, pres ):
     """ 
     Check that we are not allowing a dose de-escalation, nor a second escalation.
     
-    (Both prohibited in the XXX trial)
+    (Both prohibited in the INSIGHT-2 trial)
     """
     curr_plan = plan
     #Store prescribed dose at each replan
@@ -297,6 +423,7 @@ def set_optimization_params( adapted_plan ):
     adapted_plan.PlanOptimizations[0].OptimizationParameters.DoseCalculation.IterationsInPreparationsPhase = OPT_ITERS_PREP
     # ?? adapted_plan.PlanOptimizations[0].OptimizationParameters.TreatmentSetupSettings[0].BeamSettings[0].ArcConversionPropertiesPerBeam.MaxArcDeliveryTime = 120
     
+
     
 def delete_empty_objectives( case, adapted_plan, adapted_ct_name ):
     """ Remove objectives on empty structures and return a list that were removed """
@@ -326,7 +453,7 @@ def rederive_rois( case, current_exam ):
     
     TODO: Is it possible that unapproved CTV may be derived, then edited and not "underived", and this method could alter it?
           Should I just update things without any contours? 
-          (This would mean we could NOT edit a GTV and rerun script as PTVs wouldnt be updated)
+               (This would mean we could NOT edit a GTV and rerun script as PTVs wouldnt be updated)
     TODO: Is the order these are rederived important? (Probably accounted for in order of appearance in template)
     """ 
     
@@ -357,10 +484,13 @@ def rederive_rois( case, current_exam ):
     
     
 def rescale_objectives(adapted_plan, presc_new, presc_delivered, prev_beamset_presc, fxns_planned_for_previously, remaining_fractions):    
-    """ Rescale all objectives for remaining fractions and dose escalation
+    """ Rescale all objectives 
     
     Boost dose to structures in OBJECTIVES_TO_SCALE_WITH_PRESCRIPTION
     """
+    
+    #DUALTASCALE = 0.99  # Dualta's fix for dose rescale issue
+    DUALTASCALE = 1
     
     constituent_functions = [cf for cf in adapted_plan.PlanOptimizations[0].Objective.ConstituentFunctions ] 
     
@@ -369,19 +499,19 @@ def rescale_objectives(adapted_plan, presc_new, presc_delivered, prev_beamset_pr
         if( cf.ForRegionOfInterest.Name in OBJECTIVES_TO_SCALE_WITH_PRESCRIPTION ):  
             # Then dose escalation required
             if hasattr( cf.DoseFunctionParameters, 'DoseLevel' ):
-                curr_dose_level = cf.DoseFunctionParameters.DoseLevel   
+                curr_dose_level = cf.DoseFunctionParameters.DoseLevel  
                 new_dose =  ( 1.0*curr_dose_level / prev_beamset_presc ) *  ( presc_new - presc_delivered )
-                cf.DoseFunctionParameters.DoseLevel = new_dose  
+                cf.DoseFunctionParameters.DoseLevel = new_dose  * DUALTASCALE 
                 
             elif hasattr( cf.DoseFunctionParameters, 'HighDoseLevel' ):
                 curr_dose_level = cf.DoseFunctionParameters.HighDoseLevel                     
                 new_dose =  ( 1.0*curr_dose_level / prev_beamset_presc ) *  ( presc_new - presc_delivered )
-                cf.DoseFunctionParameters.HighDoseLevel = new_dose  
+                cf.DoseFunctionParameters.HighDoseLevel = new_dose   * DUALTASCALE  
                 
                 if hasattr( cf.DoseFunctionParameters, 'LowDoseLevel' ):
                     curr_dose_level = cf.DoseFunctionParameters.LowDoseLevel                                      
                     new_dose =  ( 1.0*curr_dose_level / prev_beamset_presc ) *  ( presc_new - presc_delivered )
-                    cf.DoseFunctionParameters.LowDoseLevel = new_dose  
+                    cf.DoseFunctionParameters.LowDoseLevel = new_dose    *  DUALTASCALE
      
                 else:
                     raise AdaptPlanException("Unrecognized objective type for objective number {}".format(index))           
@@ -392,15 +522,15 @@ def rescale_objectives(adapted_plan, presc_new, presc_delivered, prev_beamset_pr
             # No dose escalation required on these
             if hasattr( cf.DoseFunctionParameters, 'DoseLevel' ):
                 curr_dose_level = cf.DoseFunctionParameters.DoseLevel             
-                cf.DoseFunctionParameters.DoseLevel = (1.0*curr_dose_level/fxns_planned_for_previously) * remaining_fractions 
+                cf.DoseFunctionParameters.DoseLevel = (1.0*curr_dose_level/fxns_planned_for_previously) * remaining_fractions  * DUALTASCALE
                 
             elif hasattr( cf.DoseFunctionParameters, 'HighDoseLevel' ):
                 curr_dose_level = cf.DoseFunctionParameters.HighDoseLevel             
-                cf.DoseFunctionParameters.HighDoseLevel = (1.0*curr_dose_level/fxns_planned_for_previously) * remaining_fractions                 
+                cf.DoseFunctionParameters.HighDoseLevel = (1.0*curr_dose_level/fxns_planned_for_previously) * remaining_fractions  * DUALTASCALE              
                 
                 if hasattr( cf.DoseFunctionParameters, 'LowDoseLevel' ):
                     curr_dose_level = cf.DoseFunctionParameters.LowDoseLevel             
-                    cf.DoseFunctionParameters.LowDoseLevel = (1.0*curr_dose_level/fxns_planned_for_previously) * remaining_fractions                    
+                    cf.DoseFunctionParameters.LowDoseLevel = (1.0*curr_dose_level/fxns_planned_for_previously) * remaining_fractions  * DUALTASCALE      
                 
                 else:
                     raise AdaptPlanException("Unrecognized objective type for objective number {}".format(index))         
@@ -411,7 +541,7 @@ def rescale_objectives(adapted_plan, presc_new, presc_delivered, prev_beamset_pr
                 
 
 def rescale_goals(adapted_plan, presc_new, presc_delivered, prev_beamset_presc, fxns_planned_for_previously, remaining_fractions):
-    """ Rescale all clinical goals for remaining fractions and dose escalation
+    """ Rescale all clinical goals
     
     Boost dose to structures in GOALS_TO_SCALE_WITH_PRESCRIPTION
     """
@@ -460,8 +590,13 @@ def perform_optimizations( case, adapted_ct_name, adapted_plan, adapted_beam_set
             if full_ptv_name not in [ geom.OfRoi.Name for geom in case.PatientModel.StructureSets[adapted_ct_name].RoiGeometries ]:
                 raise AdaptPlanException("{} does not exist in rescan".format( full_ptv_name ))
             elif ( not case.PatientModel.StructureSets[adapted_ct_name].RoiGeometries[full_ptv_name].HasContours() ):
-                raise AdaptPlanException("{} has no volume ".format(full_ptv_name))       
-                
+                raise AdaptPlanException("{} has no volume ".format(full_ptv_name))     
+
+            ### Do this manually so I can check validity and undo if scaling not possible        
+            #beamset_prescription = presc_new - presc_delivered
+            #adapted_beam_set.NormalizeToPrescription(DspName=None, RoiName=full_ptv_name, DoseValue=beamset_prescription,
+            #                            DoseVolume=50, PrescriptionType="MedianDose", LockedBeamNames=None, EvaluateAfterScaling=True)
+                        
             D50_fx = adapted_beam_set.FractionDose.GetDoseAtRelativeVolumes(RoiName=full_ptv_name, RelativeVolumes=[0.5])[0]
             scale_MU =  1.0*( presc_new - presc_delivered ) / ( D50_fx * remaining_fractions )
             
@@ -478,7 +613,7 @@ def perform_optimizations( case, adapted_ct_name, adapted_plan, adapted_beam_set
                         bm.BeamMU = bm.BeamMU / scale_MU
                 else:
                     raise AdaptPlanException("Beam infeasible for reason other than MU per segment")                    
-  
+            
         
         
 def select_treatment_adaptation_tab():
@@ -526,7 +661,7 @@ def prompt_machine_change( adapted_beam_set ):
         print("Machine changed successfully")
     else:
         m = "Treatment machine not changed to " + FINAL_MACHINE + " \n"
-        m = m + "Change machine and perform dose calculation"
+        m = m + "Change machine, perform dose calculation\nand rescale to beamset prescription"
         RmhMessageBox.message( m, "CHANGE TREATMENT MACHINE" )
     
      
@@ -545,9 +680,6 @@ def makeAdaptedPlan(adapt_from_fx, adapted_ct_name, tot_nr_fx,
     with virtual bolus, final dose calculation without bolus
     """
     
-    replanName = "{}_{}".format(plan.Name, ADAPT_PLAN_SUFFIX)       
-    remaining_fractions = tot_nr_fx - adapt_from_fx + 1 
-    
     if patient is None:
         patient = rsl.get_current("Patient")
     if case is None:
@@ -556,8 +688,12 @@ def makeAdaptedPlan(adapt_from_fx, adapted_ct_name, tot_nr_fx,
         plan = rsl.get_current("Plan")
     if beam_set is None:
         beam_set = rsl.get_current("BeamSet")
-
-        
+            
+    #replanName = "{}_{}".format(plan.Name, ADAPT_PLAN_SUFFIX)
+    replanName = get_adaption_name(case, plan)
+    
+    remaining_fractions = tot_nr_fx - adapt_from_fx + 1 
+   
     # Get new target prescription dose 
     prescription = beam_set.Prescription.PrimaryDosePrescription
     newTargetPrescVal = prescription.DoseValue
@@ -566,7 +702,9 @@ def makeAdaptedPlan(adapt_from_fx, adapted_ct_name, tot_nr_fx,
         
     ## Get ROI associated with prescription
     roi_with_prescription = prescription.OnStructure.Name
-        
+
+    
+    print  "Delete; newTargetPrescVal = ", newTargetPrescVal 
 
     print("Checking prescription is valid")
     check_new_prescription_valid( case, plan, newTargetPrescVal )
@@ -651,7 +789,7 @@ def makeAdaptedPlan(adapt_from_fx, adapted_ct_name, tot_nr_fx,
     presc_new =  newTargetPrescVal
     presc_delivered = get_background_dose(case, adapted_plan, roi_with_prescription )
     print "   - presc_delivered = ", presc_delivered
-	 
+     
     # Actual dose from previous beamset is not stored anywhere? 
     # This "prescription" is from the previous plan's beamset
     prev_beamset_presc = prescription.DoseValue - get_background_dose(case, plan, roi_with_prescription )        
@@ -684,8 +822,13 @@ def makeAdaptedPlan(adapt_from_fx, adapted_ct_name, tot_nr_fx,
     print("Set standard optimization settings")
     set_optimization_params( adapted_plan )
     
+    print("Modifying color table")
+    #set_color_table(case, presc_beamset, tot_nr_fx, remaining_fractions)
+    presc_beamset = presc_new - presc_delivered
+    set_color_table(case, presc_beamset, tot_nr_fx, remaining_fractions)
+    
     print("Do optimizations")
-    # Want to scale to full, un-edited PTV between optimizations
+    # Want to scale to full, un-edited PTV between optimizations when bolus in place
     full_ptv_name = roi_with_prescription.split("_ed")[0].split("_Ed")[0].split("_ED")[0]   # xx CAREFUL 
     perform_optimizations( case, adapted_ct_name, adapted_plan, adapted_beam_set, full_ptv_name, presc_new, presc_delivered, remaining_fractions  )
     
@@ -731,7 +874,7 @@ def makeAdaptedPlan(adapt_from_fx, adapted_ct_name, tot_nr_fx,
             raise AdaptPlanException("Beam infeasible for reason other than MU per segment")
 
 
-
+    # WHY DO I NEED THIS FINAL CALC? SHOULD IT NOT JUST RESCALE THE MUs?
     print("Dose calculation without bolus")
     adapted_beam_set.ComputeDose(ComputeBeamDoses=True, DoseAlgorithm="CCDose", ForceRecompute=False)
     
@@ -742,7 +885,7 @@ def makeAdaptedPlan(adapt_from_fx, adapted_ct_name, tot_nr_fx,
 
 
     #Prompt user to change color table for beam set and list any objectives removed
-    msg = "\nCheck color table reference value is " + str(presc_new - presc_delivered) + " cGy  \n\n"
+    msg = "\nCheck color table reference value is " + str( round(presc_new - presc_delivered,1) ) + " cGy  \n\n"
     msg=msg + "List of objectives removed:\n" 
     for cf_rm in objectives_removed:
         msg=msg+"\t"+cf_rm+"\n"
@@ -771,7 +914,7 @@ def _find_ReplanCT(case, beam_set):
     prompt = "Choose Image for Replan ..."
     
     if len(candidateCTs) == 0:
-        #### TESTING SECOND ADAPT ###
+        #### STEVE TESTING SECOND ADAPT ###
         #candidateCT = 'RescanCT_secondAdapt'
         #candidateCT = 'RescanCT'
         ###########
@@ -825,7 +968,7 @@ class AdaptPlanException(Exception):
 def main():
 
     # Offer to continue or abort without saving
-    stopOption.giveStopOption( "\n\n\tAPPROVE ALL STRUCTURES BEFORE CONTINUING\n\n\tAny changes will be saved\n\tDo you wish to continue?\n\n\n\tAdd couch before continuing", "        --- WARNING --- ")
+    stopOption.giveStopOption( "\n\n\tAdd couch and set localisation before continuing     \n\n\tAll changes will be saved\n\tDo you wish to continue?", "     --- WARNING --- ")
     
     patient = rsl.get_current("Patient")
     case = rsl.get_current("Case")

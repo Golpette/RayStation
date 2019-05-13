@@ -1,0 +1,19 @@
+[
+    "GTV_65Gy",
+    "GTV_54Gy",
+    "CTV_65Gy",
+    "CTV_54Gy",
+    "Parotid_R",
+    "Parotid_L",
+    "Parotids_Superficial",
+    "SpinalCord",
+    "BrainStem",
+    "Chiasm",
+    "OpticNerve_R",
+    "OpticNerve_L",
+    "Lens_R",
+    "Lens_L",
+    "Globe_R",
+    "Globe_L",
+    "PharynxConst"
+]
