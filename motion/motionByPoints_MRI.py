@@ -1,5 +1,4 @@
 """
-
 Target motion based on bony landmarks
 
 Assume ROI is made of contours (i.e. not indices & vertices or 3d mesh)
@@ -22,7 +21,7 @@ to run type:
 #TODO: user to specify output destination and filename
 #TODO: make script safe for both Python 2 and 3
 #TODO:
-#
+
 
 import connect as rsl
 import os
@@ -257,15 +256,17 @@ def main():
     patient = rsl.get_current('Patient')
     case = rsl.get_current('Case')
     
-        
     try:
         os.makedirs(dataPath)
     except:
         pass
-         
-    #filename = os.path.join(dataPath,'%s%s%s%s.csv' % (EXPORT_FILE_PREFIX,patient.PatientID,"_base=",BASE_EXAMINATION))
-    #
+    
+     
+    ####filename = os.path.join(dataPath,'%s%s%s%s.csv' % (EXPORT_FILE_PREFIX,patient.PatientID,"_base=",BASE_EXAMINATION))
     filename = os.path.join(dataPath,'%s%s%s.csv' % (EXPORT_FILE_PREFIX,patient.PatientID,EXPORT_FILE_SUFFIX))
+
+    # separate file for sup-inf motion
+    filename_supinf = os.path.join(dataPath,'%s%s%s_SUPINF.csv' % (EXPORT_FILE_PREFIX,patient.PatientID,EXPORT_FILE_SUFFIX))
 
     
     # Get relevant ROIs
@@ -304,17 +305,24 @@ def main():
     
     # Make the .csv file header
     with open(filename, 'w') as fp:
-        fp.write('roi,exam,z,R.x,L.x,P.y,A.y,RefZ,RefY,RefX,SP-CTV_Clin,SP-CTV_Small\n')
+        fp.write('roi,exam,z-RefZ,R.x,L.x,P.y,A.y\n')
+
+    # I am assuming that the largest z value is always the "sup", and min is "inf"
+    with open(filename_supinf, 'w') as fp:
+        fp.write('roi,exam,S.z,I.z\n')
     
         
     strings_to_print = []
+    supinf_to_print = []
     
     
     for roi_name in all_roi_names:
         
         ## STORE ALL DATA FROM PLANNING CT AS REFERENCE.
         BASE_SCAN = []   
+        BASE_SCAN_SUPINF = []
         
+
         for exam in all_exams:
             
             ## Check that both PrimaryShape and Contour exists: 
@@ -334,10 +342,10 @@ def main():
                     ref_SP = getRefPointCoordinates(sSet, REF_POINT_SP)
                     ref_RFH = getRefPointCoordinates(sSet, REF_POINT_RFH)
                     
-                    refX = ref_RFH['x']  # NOTE that these vary slightly between exams
+                    refX = ref_RFH['x']  # NOTE that these ref points vary slightly between exams
                     refY = ref_RFH['y']
-                    global refZ
-                    refZ = ref_SP['z']   # this is sometimes one slice off between exams
+                    #global refZ
+                    refZ = ref_SP['z']
                     
                     if abs(ref_SP['x']-ref_RFH['x']) < 2.0:
                         print "---> WARNING(1): Check that SP and RFH are positioned correctly in", exam.Name
@@ -359,15 +367,35 @@ def main():
                 
                 
                     # Get relevant ROI Geometry 
-                    roiGeom = case.PatientModel.StructureSets[exam.Name].RoiGeometries[roi_name]
-            
+                    roiGeom = case.PatientModel.StructureSets[exam.Name].RoiGeometries[roi_name]    
             
                     # Get relevant z-coordinate limits of ROI
                     z_lims = findSliceLimits(roiGeom, exam.Name)            
                     z_min = z_lims[0];  z_max = z_lims[1]
 
+
+
+
+                    ################## Want sup/inf information for Zing #######################
+                    # Assume largest z value is "sup", min is "inf"        TODO: check this is true
+                    if exam.Name == BASE_EXAMINATION: #MUST come first in list of exams
+                        BASE_SCAN_SUPINF = {'roi':roi_name, 'exam':exam.Name, 'S.z':z_max-refZ, 'I.z':z_min-refZ }
+                        #BASE_SCAN_SUPINF.append( supinf_info )
+
+                    ##else:
+                    # put this in the else block if we don't want to print out the zero values of the base scan
+                    supinf_line =  ( roi_name + ',' + exam.Name + ',' + 
+                            str( (z_max-refZ) - BASE_SCAN_SUPINF['S.z'] ) + ',' + 
+                            str( (z_min-refZ) - BASE_SCAN_SUPINF['I.z'] ) + '\n'  )
+
+                    supinf_to_print.append( supinf_line )
+
+                    ############################################################################
+
+
+
                     # Get list of the z-coordinates of desired slices 
-                    #     (TODO: ensure same "closest slice" not selected multiple times; or just remove from list at end)
+                    #  (TODO: ensure same "closest slice" not selected multiple times; or just remove from list at end)
                     slice_selection = [ ]
                     s = z_min - SLICE_INTERVAL
                     while s < z_max:
@@ -378,8 +406,7 @@ def main():
                     
                     # For each slice, get R/L/A/P extreme points
                     for z in slice_selection:       
-                                    
-                        
+                                                         
                         # Get the extreme points for current ROI
                         list_of_contours = findContoursListNearPos(roiGeom, z)
                         ext_coords = findExtremePoints(list_of_contours, refX, refY, refZ)
@@ -389,10 +416,8 @@ def main():
                         #print exam.Name
                         if exam.Name == BASE_EXAMINATION:
                             planning_slice = {'roi':roi_name, 'exam':exam.Name, 'z':z-refZ, 'R.x':ext_coords['R.x'], 'R.y':ext_coords['R.y'], 'L.x':ext_coords['L.x'], 'L.y':ext_coords['L.y'], 'P.x':ext_coords['P.x'], 'P.y':ext_coords['P.y'], 'A.x':ext_coords['A.x'], 'A.y':ext_coords['A.y']   }
-                            ##
-                            #####planning_slice = {'roi':roi_name, 'exam':exam.Name, 'z':z, 'R.x':ext_coords['R.x'], 'R.y':ext_coords['R.y'], 'L.x':ext_coords['L.x'], 'L.y':ext_coords['L.y'], 'P.x':ext_coords['P.x'], 'P.y':ext_coords['P.y'], 'A.x':ext_coords['A.x'], 'A.y':ext_coords['A.y']   }
-                            ##
-                            BASE_SCAN.append(  planning_slice )
+
+                            BASE_SCAN.append( planning_slice )
                             
                         
                         #################################
@@ -435,10 +460,7 @@ def main():
                                 str( ext_coords['R.x'] - BASE_SCAN[closest_indx]['R.x']) + ',' + 
                                 str( ext_coords['L.x'] - BASE_SCAN[closest_indx]['L.x']) + ',' + 
                                 str( ext_coords['P.y'] - BASE_SCAN[closest_indx]['P.y']) + ',' + 
-                                str( ext_coords['A.y'] - BASE_SCAN[closest_indx]['A.y']) + ',' +
-                                str(refZ) + ',' +
-                                str(refY) + ',' +
-                                str(refX) + '\n' )
+                                str( ext_coords['A.y'] - BASE_SCAN[closest_indx]['A.y']) + '\n' )
                         strings_to_print.append( line )
                         
 
@@ -468,35 +490,10 @@ def main():
             fp.write( line )
 
 
+    with open(filename_supinf, 'a') as fp:
+        for line in supinf_to_print:
+            fp.write( line )
 
 
-    """ ## Edits by Zing for calculation of Z-shifts
-    # Check if pandas is installed
-    try:
-        import pandas as pd
 
-        df = pd.read_csv(filename)
-
-        # to separate csv into CTV_clin and CTV_small
-        sweeper = df[(df != 0).all(1)]  # removes first all useless rows
-
-        CTV_clin_idx = sweeper.index[sweeper['roi'] == 'CTV_Clin'].tolist()  # gets all CTV-clin indices
-        CTV_clin_data = df.iloc[CTV_clin_idx]  # gets only CTV_clin with non zeros
-        SPminusCTVclin = float(refZ) - float(CTV_clin_data['z'].max())
-
-        CTV_small_idx = sweeper.index[sweeper['roi'] == 'CTV_SmallVol'].tolist()  # gets all CTV-small indices
-        CTV_small_data = df.iloc[CTV_small_idx]  # gets only CTV_small with non zeros
-        SPminusCTVsmall = float(refZ) - float(CTV_small_data['z'].max())
-
-        #write output to csv
-        with open(filename, 'a') as fp:
-            fp.write('\n')
-            fp.write(str(['SP-CTV_Clin', str(SPminusCTVclin)]))
-            fp.write('\n')
-            fp.write(str(['SP-CTV_SmallVol', str(SPminusCTVsmall)]))
-
-    #cant run calculation of SP heights because library is not installed
-    except:
-        print "calculate Z difference in another way! Please download all data files!"
-    """
 
