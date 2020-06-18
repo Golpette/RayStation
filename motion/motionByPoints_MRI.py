@@ -109,7 +109,7 @@ def findContoursListNearPos(roiGeom, zPos):
     
     # check minInd isn't -1
     if minInd == -1 or actualZ == 9E99:
-        print "ERROR: minInd not set in findContourNearPos"
+        print("ERROR: minInd not set in findContourNearPos")
     
     # list all contours with this 
     list_conts = []
@@ -180,7 +180,7 @@ def findExtremePoints(contour_list, refX, refY, refZ):
                 cmaxY = c
               
         if maxX_ind==-1 or minX_ind==-1 or maxY_ind==-1 or minY_ind==-1:
-            print "Index has not been set in findExtremePoints()"
+            print("Index has not been set in findExtremePoints()")
         
         
         extremes = {'R.x': contour_list[cminX][minX_ind].x-refX , 'R.y':contour_list[cminX][minX_ind].y-refY, 'R.z':contour_list[cminX][minX_ind].z-refZ,
@@ -235,12 +235,12 @@ def checkAllContoursPresent(case, exam_list, roi_list):
             try:
                 ps = roi_geom.PrimaryShape
             except:
-                print "---> WARNING: No ROI for ", roi, "in", exam.Name
+                print("---> WARNING: No ROI for {} in {} ".format(roi, exam.Name) )  
                            
             try:
                 pp = roi_geom.PrimaryShape.Contours
             except:
-                print "---> WARNING: No contour for ", roi, "in", exam.Name
+                print("---> WARNING: No contour for {} in {}".format(roi,exam.Name) ) 
                 
 # --------------- # 
 
@@ -275,8 +275,8 @@ def main():
     
     
     if len( all_roi_names ) == 0:
-        print "---> WARNING: None of the desired ROIs are present!"
-    print "ROI names found:", all_roi_names
+        print("---> WARNING: None of the desired ROIs are present!")
+    print("ROI names found: {}".format(all_roi_names) )
 
     
     # Get all exam names
@@ -285,11 +285,11 @@ def main():
         for ex in EXAMINATION_LIST:
             all_exams_unordered.append(  case.Examinations[ ex ]  )
     except:
-        print "ERROR -- Examination specified in EXAMINATION_LIST not found"
+        print("ERROR -- Examination specified in EXAMINATION_LIST not found")
     
     
-    print "Base image =", BASE_EXAMINATION
-    print "Images for comparison =", [exam.Name for exam in all_exams_unordered]
+    print("Base image = {}".format(BASE_EXAMINATION)  )
+    print("Images for comparison = {}".format([exam.Name for exam in all_exams_unordered]) )   
     
     
 
@@ -349,20 +349,20 @@ def main():
                     refZ = ref_SP['z']
                     
                     if abs(ref_SP['x']-ref_RFH['x']) < 2.0:
-                        print "---> WARNING(1): Check that SP and RFH are positioned correctly in", exam.Name
+                        print("---> WARNING(1): Check that SP and RFH are positioned correctly in {}".format(exam.Name) )
                     if abs(ref_SP['z']-ref_RFH['z']) < 2.0:
-                        print "---> WARNING(2): Check that SP and RFH are positioned correctly in", exam.Name                
+                        print("---> WARNING(2): Check that SP and RFH are positioned correctly in {}".format(exam.Name) )                
                     if abs(ref_SP['z']) > 100:
-                        print "---> WARNING(3): Check that SP point has been positioned in", exam.Name
+                        print("---> WARNING(3): Check that SP point has been positioned in {}".format(exam.Name) ) 
                     if abs(ref_RFH['z']) > 100:
-                        print "---> WARNING(4): Check that RFH point has been positioned in", exam.Name            
+                        print("---> WARNING(4): Check that RFH point has been positioned in {}".format(exam.Name) )              
                               
-                    #print ' ----  Origin of new coord system ---- '
-                    #print exam.Name
-                    #print 'RFH point: x = ', ref_RFH['x'], ', y = ', ref_RFH['y']
-                    #print 'SP point: z = ', ref_SP['z']
+                    #print(" ----  Origin of new coord system ---- ")
+                    #print(exam.Name)
+                    #print("RFH point: x = {}, y = {}".format(ref_RFH['x'],ref_RFH['y'])  )
+                    #print("SP point: z = ".format(ref_SP['z']) )
                     
-                    print "...",roi_name,"in",exam.Name
+                    print("... {} in {}".format(roi_name,exam.Name)  ) 
                     ################################################################
                 
                 
@@ -414,7 +414,7 @@ def main():
 
                         
                         ### BASE_EXAMINATION must always appear first in list ###
-                        #print exam.Name
+                        #print(exam.Name)
                         if exam.Name == BASE_EXAMINATION:
                             planning_slice = {'roi':roi_name, 'exam':exam.Name, 'z':z-refZ, 'R.x':ext_coords['R.x'], 'R.y':ext_coords['R.y'], 'L.x':ext_coords['L.x'], 'L.y':ext_coords['L.y'], 'P.x':ext_coords['P.x'], 'P.y':ext_coords['P.y'], 'A.x':ext_coords['A.x'], 'A.y':ext_coords['A.y']   }
 
@@ -494,11 +494,10 @@ def main():
                         """
                         
                 else:
-                    print "---> WARNING: No contour for ", roi_name, "in", exam.Name
+                    print("---> WARNING: No contour for {} in {}".format(roi_name,exam.Name)  ) 
             else:
-                print "---> WARNING: No ROI for ", roi_name, "in", exam.Name                
+                print("---> WARNING: No ROI for {} in {}".format(roi_name,exam.Name)  )
 
-                
                 
      
 
