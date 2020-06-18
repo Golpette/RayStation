@@ -16,7 +16,8 @@ to run type:
 #TODO: print out sup/inf changes
 #TODO: use a single ref point?
 #####:
-#TODO: automatically select appropriate slice thickness for each image pair
+#TODO: automatically select appropriate slice thickness for each image pair?
+#          (either largest, or that of the weekly CBCT?)
 #TODO: GUI for easier use by clinicians
 #TODO: user to specify output destination and filename
 #TODO: make script safe for both Python 2 and 3
@@ -426,33 +427,50 @@ def main():
                         ## rather than not using the data. 
                         ## TODO: would all users actually want this though? Is there a better option?
                         closest_z = -999
-                        min_diff = 9E99
-                        min_plan_z = 9E99
-                        max_plan_z = -9E99
+                        min_diff = 9E99 
                         closest_indx = 99999
+
+                        base_min = 9E99
+                        base_max = -9E99  
+
                         
                         for ind,dct in enumerate(BASE_SCAN):                                        
                         
+                            # Here we always select the closest slice in BASE_SCAN,
+                            # even if it is very far from the current exam slice
                             planning_z = dct['z']
-                                                
-                            if planning_z < min_plan_z:
-                                min_plan_z = planning_z
-                            if planning_z > max_plan_z:
-                                max_plan_z = planning_z
                                 
-                            diff = abs(  (z-refZ) - planning_z  )
-                            #####diff = abs( z - planning_z )
-                                                 
+                            diff = abs(  (z-refZ) - planning_z  )                                                   
                                                 
                             if diff < min_diff:
                                 min_diff = diff
                                 closest_z = planning_z
-                                closest_indx = ind                                
+                                closest_indx = ind   
 
+                            '''       
+                            if planning_z < base_min:
+                                base_min = planning_z
+                            if planning_z > base_max:
+                                base_max = planning_z
+                            '''
                         ############################################
-                        ##print "closest_indx", closest_indx
+
 
             
+                        #TODO (?): currently we ALWAYS choose the closest slice in the BASE_SCAN.
+                        # i.e. it's like we extend the BASE_SCAN out when needed.
+                        # This is likely totally fine for large volumes with little sup/inf
+                        # motion but would give meaningless results for a small volume or for 
+                        # large sup/inf motion.
+                        # One option would be to only record L/R/A/P motion for slices that
+                        # do actually overlap in the patient.
+                        # To do this, here we would do something like:
+                        # 
+                        # if( (z_min-refZ)<base_min or (z_max-refZ)>base_max  ):
+                        #     do nothing
+                        # else:
+                        #     append line
+                        
 
                         # Line to be added to .csv output file, referenced to "Planning CT"
                         #line =  (  roi_name + ',' + exam.Name + ',' + str( z ) + ',' +  #### THIS WILL GIVE ACTUAL Z OF SLICE
