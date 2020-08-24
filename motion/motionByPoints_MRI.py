@@ -13,15 +13,11 @@ to run type:
 
 """
 
-#TODO: print out sup/inf changes
 #TODO: use a single ref point?
-#####:
 #TODO: automatically select appropriate slice thickness for each image pair?
 #          (either largest, or that of the weekly CBCT?)
 #TODO: GUI for easier use by clinicians
 #TODO: user to specify output destination and filename
-#TODO: make script safe for both Python 2 and 3
-#TODO:
 
 
 import connect as rsl
@@ -299,10 +295,6 @@ def main():
     # Check that all ROIs that exist
     checkAllContoursPresent(case, all_exams, all_roi_names)
 
-    # List of just names of exams
-    exam_names = [ ex.Name for ex in all_exams ]
-    
-
     
     # Make the .csv file header
     with open(filename, 'w') as fp:
@@ -333,9 +325,8 @@ def main():
                 primshape = roi_geom.PrimaryShape  
                 
                 if hasattr( primshape, "Contours"):
-                    conto = roi_geom.PrimaryShape.Contours 
             
-                    pointsAdded=0           
+                    #pointsAdded=0           
                 
                     ###############################################################
                     # Reference coordinates for z (SP) and x,y (RFH)
@@ -426,12 +417,12 @@ def main():
                         ## If we find z-values outside range of BASE_EXAMINATION, we use the extreme values of the BASE_EXAMINATION,
                         ## rather than not using the data. 
                         ## TODO: would all users actually want this though? Is there a better option?
-                        closest_z = -999
+                        #closest_z = -999
                         min_diff = 9E99 
                         closest_indx = 99999
 
-                        base_min = 9E99
-                        base_max = -9E99  
+                        #base_min = 9E99
+                        #base_max = -9E99  
 
                         
                         for ind,dct in enumerate(BASE_SCAN):                                        
@@ -444,7 +435,7 @@ def main():
                                                 
                             if diff < min_diff:
                                 min_diff = diff
-                                closest_z = planning_z
+                                #closest_z = planning_z
                                 closest_indx = ind   
 
                             '''       
